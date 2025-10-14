@@ -142,3 +142,96 @@ func TestLogicReversed(t *testing.T) {
 	<-doneT1
 	<-doneT2
 }
+
+// BenchmarkOrderMutexSequential benchmarks sequential Lock/Unlock operations
+func BenchmarkOrderMutexSequential(b *testing.B) {
+	m := New()
+	tickets := make([]Ticket, b.N)
+
+	// Pre-allocate all tickets
+	for i := 0; i < b.N; i++ {
+		tickets[i] = m.GetTicket()
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.Lock(tickets[i])
+		m.Unlock(tickets[i])
+	}
+	b.StopTimer()
+
+	// Cleanup
+	for i := 0; i < b.N; i++ {
+		m.ReturnTicket(tickets[i])
+	}
+}
+
+// BenchmarkStdMutexSequential benchmarks standard mutex for comparison
+func BenchmarkStdMutexSequential(b *testing.B) {
+	var m sync.Mutex
+	for i := 0; i < b.N; i++ {
+		m.Lock()
+		m.Unlock()
+	}
+}
+
+// BenchmarkOrderMutexContention benchmarks with concurrent goroutines
+func BenchmarkOrderMutexContention(b *testing.B) {
+	m := New()
+	var wg sync.WaitGroup
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := m.GetTicket()
+			m.Lock(t)
+			m.Unlock(t)
+			m.ReturnTicket(t)
+		}()
+	}
+	wg.Wait()
+}
+
+// BenchmarkStdMutexContention benchmarks standard mutex contention for comparison
+func BenchmarkStdMutexContention(b *testing.B) {
+	var m sync.Mutex
+	var wg sync.WaitGroup
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.Lock()
+			m.Unlock()
+		}()
+	}
+	wg.Wait()
+}
+
+// BenchmarkOrderMutexWithBurnedTickets benchmarks with some tickets burned
+func BenchmarkOrderMutexWithBurnedTickets(b *testing.B) {
+	m := New()
+	var wg sync.WaitGroup
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			t := m.GetTicket()
+			defer m.ReturnTicket(t)
+
+			// Burn every 10th ticket
+			if idx%10 == 0 {
+				return
+			}
+
+			m.Lock(t)
+			m.Unlock(t)
+		}(i)
+	}
+	wg.Wait()
+}
