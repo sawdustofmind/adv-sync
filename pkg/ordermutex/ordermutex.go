@@ -119,12 +119,11 @@ func (m *orderMutex) ReturnTicket(t Ticket) {
 func (m *orderMutex) advanceAndWakeNext() {
 	// Skip burned tickets strictly ahead of (or at) cur.
 	for {
-		if _, burned := m.burned[m.cur]; burned {
-			delete(m.burned, m.cur)
-			m.cur++
-			continue
+		if _, burned := m.burned[m.cur]; !burned {
+			break
 		}
-		break
+		delete(m.burned, m.cur)
+		m.cur++
 	}
 
 	// Wake the exact next waiter, if any.
